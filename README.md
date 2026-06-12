@@ -11,6 +11,16 @@ O **ffmpeg vem embutido** via `imageio-ffmpeg` — não é necessário instalar 
 
 ---
 
+## 📸 Telas
+
+### Baixador do YouTube → MP3
+![Baixador do YouTube](docs/youtube.png)
+
+### Conversor de arquivos → MP3
+![Conversor MP3](docs/conversor.png)
+
+---
+
 ## ✨ Funcionalidades
 
 ### Baixador do YouTube (`baixar_mp3.py`)
@@ -78,3 +88,9 @@ python conversor_mp3.py   # conversor de arquivos locais
 ## ⚠️ Aviso
 
 Use estas ferramentas apenas para conteúdo que você tem o direito de baixar/converter (material próprio, de domínio público ou com licença que permita). Respeite os termos de uso do YouTube e a legislação de direitos autorais.
+
+---
+
+## 📄 Licença
+
+Distribuído sob a licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
