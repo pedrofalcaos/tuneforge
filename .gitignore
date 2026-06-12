@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Áudio/vídeo gerados
+*.mp3
+*.mp4
+*.mpeg
+*.mpg
+*.webm
+*.m4a
+*.part
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Configurações locais de ferramentas
+.claude/
