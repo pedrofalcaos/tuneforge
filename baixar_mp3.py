@@ -88,8 +88,15 @@ class Downloader:
                cookies_browser=None, cookiefile=None):
         # Define o template do nome do arquivo de saída
         if nome and nome.strip():
+            nome_limpo = nome.strip()
+            # Se o usuário digitou a extensão no nome, remove para não gerar
+            # arquivos como "musica.mp3.mp3".
+            for ext in (".mp3", ".m4a", ".wav", ".aac", ".ogg"):
+                if nome_limpo.lower().endswith(ext):
+                    nome_limpo = nome_limpo[: -len(ext)]
+                    break
             # Remove caracteres inválidos para nome de arquivo no Windows
-            nome_limpo = "".join(c for c in nome.strip() if c not in '\\/:*?"<>|')
+            nome_limpo = "".join(c for c in nome_limpo if c not in '\\/:*?"<>|')
             outtmpl = os.path.join(pasta, nome_limpo + ".%(ext)s")
         else:
             outtmpl = os.path.join(pasta, "%(title)s.%(ext)s")
@@ -106,8 +113,7 @@ class Downloader:
         if embed_thumb:
             postprocessors.append({"key": "EmbedThumbnail"})
 
-        ydl_opts = {
-            "format": "bestaudio/best",
+        base_opts = {
             "outtmpl": outtmpl,
             "postprocessors": postprocessors,
             "writethumbnail": embed_thumb,
@@ -124,27 +130,43 @@ class Downloader:
             # Múltiplos "clientes" do YouTube: se um falhar (mudança do site
             # ou bloqueio), o yt-dlp tenta outro automaticamente.
             "extractor_args": {
-                "youtube": {"player_client": ["default", "web_safari", "tv", "ios"]}
+                "youtube": {"player_client": ["default", "web", "mweb", "tv"]}
             },
         }
 
         # Aponta para o ffmpeg embutido, se disponível
         if FFMPEG_DIR:
-            ydl_opts["ffmpeg_location"] = FFMPEG_DIR
+            base_opts["ffmpeg_location"] = FFMPEG_DIR
 
         # Arquivo cookies.txt tem prioridade (método mais confiável);
         # senão, tenta ler os cookies direto do navegador.
         if cookiefile and os.path.isfile(cookiefile):
-            ydl_opts["cookiefile"] = cookiefile
+            base_opts["cookiefile"] = cookiefile
         elif cookies_browser and cookies_browser.lower() != "nenhum":
-            ydl_opts["cookiesfrombrowser"] = (cookies_browser.lower(),)
+            base_opts["cookiesfrombrowser"] = (cookies_browser.lower(),)
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                return info.get("title", "arquivo")
-        except Exception as e:
-            raise RuntimeError(self._traduzir_erro(str(e)))
+        # Tenta vários seletores de formato em sequência. Se "bestaudio" não
+        # existir para o vídeo, cai para o melhor formato combinado e extrai o
+        # áudio dele — assim o "Formato de áudio indisponível" some.
+        formatos = ["bestaudio/best", "bestaudio*/best", "best", "worstaudio/worst"]
+        ultimo_erro = None
+        for i, fmt in enumerate(formatos):
+            opts = dict(base_opts)
+            opts["format"] = fmt
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    return info.get("title", "arquivo")
+            except Exception as e:
+                msg = str(e).lower()
+                ultimo_erro = e
+                # Só vale a pena tentar outro formato se o erro for de formato.
+                if "format" in msg and i < len(formatos) - 1:
+                    self.log_queue.put(
+                        ("log", "Formato indisponível, tentando outro..."))
+                    continue
+                break
+        raise RuntimeError(self._traduzir_erro(str(ultimo_erro)))
 
     @staticmethod
     def _traduzir_erro(msg):
