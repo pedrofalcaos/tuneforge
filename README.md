@@ -31,6 +31,8 @@ O **ffmpeg vem embutido** via `imageio-ffmpeg` — não é necessário instalar 
 - **Capa (thumbnail)** e **metadados** embutidos no MP3
 - Barra de progresso e log em tempo real
 - Refaz partes que falharem no download (evita áudio cortado/corrompido)
+- **Botão "Atualizar yt-dlp"** — mantém o download funcionando quando o YouTube muda
+- Opção de **cookies do navegador** — resolve o erro "confirme que você não é um robô"
 
 ### Conversor MP3 (`conversor_mp3.py`)
 - Interface escura moderna
@@ -82,6 +84,21 @@ python conversor_mp3.py   # conversor de arquivos locais
 | `requirements.txt` | Dependências do projeto |
 | `Abrir.bat` | Atalho para o baixador (Windows) |
 | `Conversor.bat` | Atalho para o conversor (Windows) |
+
+---
+
+## 🛠️ Não está baixando? (solução de problemas)
+
+O YouTube muda com frequência e, quando isso acontece, o download pode parar até o `yt-dlp` ser atualizado.
+
+1. **Atualize o yt-dlp.** Clique no botão **🔄 Atualizar yt-dlp** (canto inferior da janela) e, ao terminar, **feche e reabra** o programa. Ou rode no terminal:
+   ```bash
+   python -m pip install --upgrade yt-dlp
+   ```
+2. **Erro "confirme que você não é um robô" / "Sign in to confirm you're not a bot":** no campo **"Cookies do navegador"**, escolha o navegador onde você está logado no YouTube (ex.: Chrome ou Edge) e baixe de novo.
+3. **"Vídeo indisponível / privado":** o vídeo pode ter sido removido, ser privado ou ter bloqueio na sua região — tente outro link.
+
+> Dica: o `Abrir.bat` já tenta atualizar o `yt-dlp` sempre que você abre o programa.
 
 ---
 

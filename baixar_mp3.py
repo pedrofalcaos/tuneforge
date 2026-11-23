@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import threading
 import queue
+import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -83,7 +84,8 @@ class Downloader:
             self.log_queue.put(("log", "Download concluído. Convertendo para MP3..."))
             self.log_queue.put(("progress", 100))
 
-    def baixar(self, url, pasta, nome, bitrate, embed_thumb, embed_meta):
+    def baixar(self, url, pasta, nome, bitrate, embed_thumb, embed_meta,
+               cookies_browser=None):
         # Define o template do nome do arquivo de saída
         if nome and nome.strip():
             # Remove caracteres inválidos para nome de arquivo no Windows
@@ -119,16 +121,54 @@ class Downloader:
             "continuedl": True,
             # Mantém o arquivo limpo, sem sobrescrever silenciosamente
             "overwrites": False,
+            # Múltiplos "clientes" do YouTube: se um falhar (mudança do site
+            # ou bloqueio), o yt-dlp tenta outro automaticamente.
+            "extractor_args": {
+                "youtube": {"player_client": ["default", "web_safari", "tv", "ios"]}
+            },
         }
 
         # Aponta para o ffmpeg embutido, se disponível
         if FFMPEG_DIR:
             ydl_opts["ffmpeg_location"] = FFMPEG_DIR
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            titulo = info.get("title", "arquivo")
-            return titulo
+        # Usa os cookies do navegador para driblar o "confirme que não é um robô"
+        if cookies_browser and cookies_browser.lower() != "nenhum":
+            ydl_opts["cookiesfrombrowser"] = (cookies_browser.lower(),)
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                return info.get("title", "arquivo")
+        except Exception as e:
+            raise RuntimeError(self._traduzir_erro(str(e)))
+
+    @staticmethod
+    def _traduzir_erro(msg):
+        """Transforma o erro técnico do yt-dlp em algo compreensível."""
+        baixo = msg.lower()
+        if "not a bot" in baixo or "sign in to confirm" in baixo:
+            return ("O YouTube pediu verificação de 'não sou um robô'.\n\n"
+                    "Solução: no campo 'Cookies do navegador', escolha o navegador "
+                    "onde você está logado no YouTube (ex.: Chrome ou Edge) e tente "
+                    "de novo.")
+        if "private video" in baixo:
+            return "Esse vídeo é privado — não é possível baixar."
+        if "video unavailable" in baixo or "removed" in baixo:
+            return "Vídeo indisponível (pode ter sido removido ou é restrito na sua região)."
+        if "age" in baixo and "restrict" in baixo:
+            return ("Vídeo com restrição de idade. Use a opção 'Cookies do navegador' "
+                    "com uma conta logada e maior de idade.")
+        if "requested format is not available" in baixo:
+            return "Formato de áudio indisponível para esse vídeo. Tente outro link."
+        if "unable to download" in baixo and "player" in baixo:
+            return ("Falha ao ler o vídeo — o yt-dlp pode estar desatualizado.\n\n"
+                    "Clique em 'Atualizar yt-dlp' e reabra o programa.")
+        if "ffmpeg" in baixo or "ffprobe" in baixo:
+            return "ffmpeg não encontrado. Rode: pip install imageio-ffmpeg"
+        # Mensagem genérica, já limpa do prefixo "ERROR:"
+        limpa = msg.replace("ERROR:", "").strip()
+        return limpa or "Falha desconhecida no download."
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +178,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("YouTube -> MP3")
-        self.geometry("620x430")
+        self.geometry("620x510")
         self.resizable(False, False)
 
         self.log_queue = queue.Queue()
@@ -202,17 +242,40 @@ class App(tk.Tk):
         self.meta_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(opt, text="Metadados", variable=self.meta_var).pack(side="left")
 
+        # Cookies do navegador (resolve o erro "confirme que não é um robô")
+        cook = ttk.Frame(frame)
+        cook.grid(row=7, column=0, columnspan=3, sticky="we", pady=(4, 2))
+        ttk.Label(cook, text="Cookies do navegador (se der erro de 'robô'):").pack(
+            side="left")
+        self.cookies_var = tk.StringVar(value="Nenhum")
+        ttk.Combobox(
+            cook,
+            textvariable=self.cookies_var,
+            values=["Nenhum", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi"],
+            width=10,
+            state="readonly",
+        ).pack(side="left", padx=(6, 0))
+
         # Botão baixar
         self.btn = ttk.Button(frame, text="Baixar MP3", command=self._iniciar)
-        self.btn.grid(row=7, column=0, columnspan=3, sticky="we", pady=(12, 6))
+        self.btn.grid(row=8, column=0, columnspan=3, sticky="we", pady=(12, 6))
 
         # Barra de progresso
         self.progress = ttk.Progressbar(frame, mode="determinate", maximum=100)
-        self.progress.grid(row=8, column=0, columnspan=3, sticky="we", pady=(0, 6))
+        self.progress.grid(row=9, column=0, columnspan=3, sticky="we", pady=(0, 6))
 
         # Log
         self.log = tk.Text(frame, height=6, width=70, state="disabled", wrap="word")
-        self.log.grid(row=9, column=0, columnspan=3, sticky="we")
+        self.log.grid(row=10, column=0, columnspan=3, sticky="we")
+
+        # Rodapé: versão do yt-dlp + botão de atualizar
+        rodape = ttk.Frame(frame)
+        rodape.grid(row=11, column=0, columnspan=3, sticky="we", pady=(8, 0))
+        self.versao_lbl = ttk.Label(rodape, text=self._texto_versao())
+        self.versao_lbl.pack(side="left")
+        self.btn_update = ttk.Button(rodape, text="🔄 Atualizar yt-dlp",
+                                     command=self._atualizar_ytdlp)
+        self.btn_update.pack(side="right")
 
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
@@ -221,6 +284,33 @@ class App(tk.Tk):
             self._log(
                 "AVISO: ffmpeg não encontrado. Instale com: pip install imageio-ffmpeg"
             )
+
+    def _texto_versao(self):
+        return f"yt-dlp {getattr(yt_dlp.version, '__version__', '?')}"
+
+    def _atualizar_ytdlp(self):
+        """Atualiza o yt-dlp via pip e avisa para reabrir o programa."""
+        if self.baixando:
+            return
+        self.btn_update.configure(state="disabled", text="Atualizando...")
+        self._log("Atualizando yt-dlp... aguarde.")
+
+        def tarefa():
+            try:
+                flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                r = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--upgrade",
+                     "yt-dlp", "imageio-ffmpeg"],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    universal_newlines=True, encoding="utf-8", errors="ignore",
+                    creationflags=flags,
+                )
+                ok = r.returncode == 0
+                self.log_queue.put(("update_done", ok))
+            except Exception as e:
+                self.log_queue.put(("update_done", False))
+
+        threading.Thread(target=tarefa, daemon=True).start()
 
     def _escolher_pasta(self):
         pasta = filedialog.askdirectory(initialdir=self.pasta_var.get() or "/")
@@ -261,14 +351,16 @@ class App(tk.Tk):
                 self.bitrate_var.get(),
                 self.thumb_var.get(),
                 self.meta_var.get(),
+                self.cookies_var.get(),
             ),
             daemon=True,
         )
         t.start()
 
-    def _worker(self, url, pasta, nome, bitrate, thumb, meta):
+    def _worker(self, url, pasta, nome, bitrate, thumb, meta, cookies):
         try:
-            titulo = self.downloader.baixar(url, pasta, nome, bitrate, thumb, meta)
+            titulo = self.downloader.baixar(
+                url, pasta, nome, bitrate, thumb, meta, cookies)
             self.log_queue.put(("done", titulo))
         except Exception as e:
             self.log_queue.put(("error", str(e)))
@@ -293,6 +385,21 @@ class App(tk.Tk):
                     self._log(f"❌ Erro: {dado}")
                     messagebox.showerror("Erro", dado)
                     self._resetar()
+                elif tipo == "update_done":
+                    self.btn_update.configure(state="normal",
+                                              text="🔄 Atualizar yt-dlp")
+                    if dado:
+                        self._log("✅ yt-dlp atualizado. FECHE e reabra o programa "
+                                  "para aplicar.")
+                        messagebox.showinfo(
+                            "Atualizado",
+                            "yt-dlp atualizado com sucesso!\n\n"
+                            "Feche e abra o programa de novo para usar a versão nova.")
+                    else:
+                        self._log("❌ Não foi possível atualizar o yt-dlp.")
+                        messagebox.showerror(
+                            "Erro",
+                            "Falha ao atualizar. Verifique sua conexão com a internet.")
         except queue.Empty:
             pass
         self.after(100, self._processar_fila)
