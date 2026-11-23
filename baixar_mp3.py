@@ -146,6 +146,9 @@ class Downloader:
     @staticmethod
     def _traduzir_erro(msg):
         """Transforma o erro técnico do yt-dlp em algo compreensível."""
+        import re
+        # Remove códigos de cor ANSI (ex.: \x1b[0;31m) que sujam a mensagem
+        msg = re.sub(r"\x1b\[[0-9;]*m", "", msg)
         baixo = msg.lower()
         if "not a bot" in baixo or "sign in to confirm" in baixo:
             return ("O YouTube pediu verificação de 'não sou um robô'.\n\n"
@@ -154,8 +157,15 @@ class Downloader:
                     "de novo.")
         if "private video" in baixo:
             return "Esse vídeo é privado — não é possível baixar."
-        if "video unavailable" in baixo or "removed" in baixo:
-            return "Vídeo indisponível (pode ter sido removido ou é restrito na sua região)."
+        if "not available in your country" in baixo or "geo" in baixo:
+            return ("Vídeo bloqueado na sua região.\n\n"
+                    "Tente a opção 'Cookies do navegador' com uma conta logada, "
+                    "ou procure outra versão da música.")
+        if "unavailable" in baixo or "video unavailable" in baixo or "removed" in baixo:
+            return ("Esse vídeo está indisponível no YouTube — provavelmente foi "
+                    "removido, ficou privado ou o canal foi excluído.\n\n"
+                    "Não é problema do programa: abra o link no navegador para "
+                    "confirmar. Procure outra versão/upload da mesma música.")
         if "age" in baixo and "restrict" in baixo:
             return ("Vídeo com restrição de idade. Use a opção 'Cookies do navegador' "
                     "com uma conta logada e maior de idade.")
