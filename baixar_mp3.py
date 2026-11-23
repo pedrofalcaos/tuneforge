@@ -85,7 +85,7 @@ class Downloader:
             self.log_queue.put(("progress", 100))
 
     def baixar(self, url, pasta, nome, bitrate, embed_thumb, embed_meta,
-               cookies_browser=None):
+               cookies_browser=None, cookiefile=None):
         # Define o template do nome do arquivo de saída
         if nome and nome.strip():
             # Remove caracteres inválidos para nome de arquivo no Windows
@@ -132,8 +132,11 @@ class Downloader:
         if FFMPEG_DIR:
             ydl_opts["ffmpeg_location"] = FFMPEG_DIR
 
-        # Usa os cookies do navegador para driblar o "confirme que não é um robô"
-        if cookies_browser and cookies_browser.lower() != "nenhum":
+        # Arquivo cookies.txt tem prioridade (método mais confiável);
+        # senão, tenta ler os cookies direto do navegador.
+        if cookiefile and os.path.isfile(cookiefile):
+            ydl_opts["cookiefile"] = cookiefile
+        elif cookies_browser and cookies_browser.lower() != "nenhum":
             ydl_opts["cookiesfrombrowser"] = (cookies_browser.lower(),)
 
         try:
@@ -188,7 +191,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("YouTube -> MP3")
-        self.geometry("620x510")
+        self.geometry("620x560")
         self.resizable(False, False)
 
         self.log_queue = queue.Queue()
@@ -252,10 +255,10 @@ class App(tk.Tk):
         self.meta_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(opt, text="Metadados", variable=self.meta_var).pack(side="left")
 
-        # Cookies do navegador (resolve o erro "confirme que não é um robô")
+        # Cookies do navegador (resolve "robô", restrição de idade/região/login)
         cook = ttk.Frame(frame)
         cook.grid(row=7, column=0, columnspan=3, sticky="we", pady=(4, 2))
-        ttk.Label(cook, text="Cookies do navegador (se der erro de 'robô'):").pack(
+        ttk.Label(cook, text="Cookies do navegador (p/ vídeo restrito):").pack(
             side="left")
         self.cookies_var = tk.StringVar(value="Nenhum")
         ttk.Combobox(
@@ -266,21 +269,34 @@ class App(tk.Tk):
             state="readonly",
         ).pack(side="left", padx=(6, 0))
 
+        # Arquivo cookies.txt (método à prova de falhas)
+        cook2 = ttk.Frame(frame)
+        cook2.grid(row=8, column=0, columnspan=3, sticky="we", pady=(0, 2))
+        ttk.Label(cook2, text="ou arquivo cookies.txt:").pack(side="left")
+        self.cookiefile_var = tk.StringVar(value="")
+        ttk.Entry(cook2, textvariable=self.cookiefile_var, width=40).pack(
+            side="left", padx=(6, 6))
+        ttk.Button(cook2, text="Escolher...",
+                   command=self._escolher_cookies).pack(side="left")
+        ttk.Button(cook2, text="Limpar",
+                   command=lambda: self.cookiefile_var.set("")).pack(
+            side="left", padx=(6, 0))
+
         # Botão baixar
         self.btn = ttk.Button(frame, text="Baixar MP3", command=self._iniciar)
-        self.btn.grid(row=8, column=0, columnspan=3, sticky="we", pady=(12, 6))
+        self.btn.grid(row=9, column=0, columnspan=3, sticky="we", pady=(12, 6))
 
         # Barra de progresso
         self.progress = ttk.Progressbar(frame, mode="determinate", maximum=100)
-        self.progress.grid(row=9, column=0, columnspan=3, sticky="we", pady=(0, 6))
+        self.progress.grid(row=10, column=0, columnspan=3, sticky="we", pady=(0, 6))
 
         # Log
         self.log = tk.Text(frame, height=6, width=70, state="disabled", wrap="word")
-        self.log.grid(row=10, column=0, columnspan=3, sticky="we")
+        self.log.grid(row=11, column=0, columnspan=3, sticky="we")
 
         # Rodapé: versão do yt-dlp + botão de atualizar
         rodape = ttk.Frame(frame)
-        rodape.grid(row=11, column=0, columnspan=3, sticky="we", pady=(8, 0))
+        rodape.grid(row=12, column=0, columnspan=3, sticky="we", pady=(8, 0))
         self.versao_lbl = ttk.Label(rodape, text=self._texto_versao())
         self.versao_lbl.pack(side="left")
         self.btn_update = ttk.Button(rodape, text="🔄 Atualizar yt-dlp",
@@ -327,6 +343,13 @@ class App(tk.Tk):
         if pasta:
             self.pasta_var.set(pasta)
 
+    def _escolher_cookies(self):
+        arq = filedialog.askopenfilename(
+            title="Escolha o arquivo cookies.txt",
+            filetypes=[("Arquivo de cookies", "*.txt"), ("Todos", "*.*")])
+        if arq:
+            self.cookiefile_var.set(arq)
+
     def _log(self, texto):
         self.log.configure(state="normal")
         self.log.insert("end", texto + "\n")
@@ -362,15 +385,16 @@ class App(tk.Tk):
                 self.thumb_var.get(),
                 self.meta_var.get(),
                 self.cookies_var.get(),
+                self.cookiefile_var.get(),
             ),
             daemon=True,
         )
         t.start()
 
-    def _worker(self, url, pasta, nome, bitrate, thumb, meta, cookies):
+    def _worker(self, url, pasta, nome, bitrate, thumb, meta, cookies, cookiefile):
         try:
             titulo = self.downloader.baixar(
-                url, pasta, nome, bitrate, thumb, meta, cookies)
+                url, pasta, nome, bitrate, thumb, meta, cookies, cookiefile)
             self.log_queue.put(("done", titulo))
         except Exception as e:
             self.log_queue.put(("error", str(e)))

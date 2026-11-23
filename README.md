@@ -95,8 +95,9 @@ O YouTube muda com frequência e, quando isso acontece, o download pode parar at
    ```bash
    python -m pip install --upgrade yt-dlp
    ```
-2. **Erro "confirme que você não é um robô" / "Sign in to confirm you're not a bot":** no campo **"Cookies do navegador"**, escolha o navegador onde você está logado no YouTube (ex.: Chrome ou Edge) e baixe de novo.
-3. **"Vídeo indisponível / privado":** o vídeo pode ter sido removido, ser privado ou ter bloqueio na sua região — tente outro link.
+2. **Erro "confirme que você não é um robô" / vídeo restrito (idade/login):** no campo **"Cookies do navegador"**, escolha o navegador onde você está logado no YouTube e baixe de novo.
+   - **Chrome/Edge no Windows** às vezes bloqueiam a leitura dos cookies. Nesse caso, use a opção **"ou arquivo cookies.txt"**: instale a extensão *Get cookies.txt LOCALLY*, exporte os cookies do `youtube.com` para um arquivo e selecione-o no programa.
+3. **"Vídeo indisponível":** se você consegue assistir mas o download falha, é restrição (idade/login/região) — use os cookies acima. Se nem no navegador abre, o vídeo foi removido; procure outro link.
 
 > Dica: o `Abrir.bat` já tenta atualizar o `yt-dlp` sempre que você abre o programa.
 
